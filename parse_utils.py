@@ -188,11 +188,29 @@ def first_pc_analysis(df, pca, ncomp=0):
     return sorted_df
 
 
+def check_null_types(df):
+    """
+     Count how many null values are associated with dtypes in a dataframe.
+    :param df:
+    :return: df
+    """
+    null_counts = df.isna().sum()
+    # create dataframe to hold the counts by dtypes
+    null_summary = pd.DataFrame({
+        'null_count': null_counts,
+        'dtype': df.dtypes
+    })
+
+    # group by dtype
+    null_by_dtype = null_summary.groupby('dtype')['null_count'].sum()
+
+    return null_by_dtype
+
+
 if __name__ == '__main__':
     semi = ';'
 
-    azdias_demogrh_df = pd.read_csv('Udacity_AZDIAS_Subset.csv', sep=semi, na_values=['NaN', '[]'] )
-    copy_of_azdias_demogrh_df = azdias_demogrh_df.copy()
+    azdias_demogrh_df = pd.read_csv('Udacity_CUSTOMERS_Subset.csv', sep=semi, na_values=['NaN', '[]'] )
 
     # Load in the feature summary file.
     feat_info = pd.read_csv('AZDIAS_Feature_Summary.csv', sep=semi)
@@ -206,10 +224,6 @@ if __name__ == '__main__':
     #Find columns over percent threshold and columns to drop from list, threshold is set at 20
     columns_over_threshold_percent, columns_to_drop =  find_columns_to_drop_over_threshold(column_count_of_missing_df)
 
-    # Drop the columns from summary based off of columns_to_drop and reset index on summary
-    summary_df.drop(columns=columns_to_drop, inplace=True, axis=1)
-    summary_df.reset_index(drop=True, inplace=True)
-
     #Find The missing rows and split summary returning upper and lower threshold
     rows_missing_from_summary = find_row_with_missing_data(summary_df)
     rows_threshold_upper, rows_threshold_lower = split_dataset(summary_df, rows_missing_from_summary)
@@ -221,8 +235,11 @@ if __name__ == '__main__':
     cat, binary, multi = find_categories(feat_info, summary_df)
 
     #Lower threshold drop the rows where its CAMEO_DEU_215
-    rows_threshold_lower.drop(index=rows_threshold_lower.loc[
-                rows_threshold_lower['CAMEO_DEU_2015'] == True].index, inplace=True, axis=1)
+    if 'CAMEO_DEU_215' in rows_threshold_lower.columns:
+        rows_threshold_lower.drop(index=rows_threshold_lower.loc[
+                    rows_threshold_lower['CAMEO_DEU_2015'] == True].index, inplace=True, axis=1)
+    else:
+        pass
 
     # Encode with  dummy variables call encoded_rows_with_dummies
     rows_threshold_lower = encoded_rows_with_dummies(rows_threshold_lower, multi)
@@ -230,6 +247,11 @@ if __name__ == '__main__':
     # Feature Engineering on PRAEGENDE_JUGENDJAHRE creating Movement and Decade Columns
     rows_threshold_lower['MOVEMENT'] = rows_threshold_lower['PRAEGENDE_JUGENDJAHRE'].apply(search_music_styles)
     rows_threshold_lower['DECADE'] =  rows_threshold_lower['PRAEGENDE_JUGENDJAHRE'].map(decade)
+
+
+    # Drop the columns from summary based off of columns_to_drop and reset index on summary
+    summary_df.drop(columns=columns_to_drop, inplace=True, axis=1)
+    summary_df.reset_index(drop=True, inplace=True)
 
     # FeatureEngineering on CAMEO_INTL_2015'
     rows_threshold_lower = create_feature_rows(rows_threshold_lower)
@@ -239,6 +261,9 @@ if __name__ == '__main__':
 
     # Drop the mix data type rows  from  rows_threshold_lower
     rows_threshold_lower.drop(mixed_data_type_rows, inplace=True, axis=1)
+
+
+
 
     print(rows_threshold_lower.head())
 
