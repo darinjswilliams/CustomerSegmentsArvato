@@ -1,5 +1,9 @@
 import pandas as pd
 import numpy as np
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.impute import SimpleImputer
 
 # Suppress SettingWithCopyWarning
 pd.options.mode.chained_assignment = None
@@ -222,7 +226,7 @@ if __name__ == '__main__':
     column_count_of_missing_df = find_columns_with_missing_data(summary_df)
 
     #Find columns over percent threshold and columns to drop from list, threshold is set at 20
-    columns_over_threshold_percent, columns_to_drop =  find_columns_to_drop_over_threshold(column_count_of_missing_df)
+    columns_over_threshold_percent, columns_to_drop =  find_columns_to_drop_over_threshold(column_count_of_missing_df, 30)
 
     #Find The missing rows and split summary returning upper and lower threshold
     rows_missing_from_summary = find_row_with_missing_data(summary_df)
@@ -235,11 +239,9 @@ if __name__ == '__main__':
     cat, binary, multi = find_categories(feat_info, summary_df)
 
     #Lower threshold drop the rows where its CAMEO_DEU_215
-    if 'CAMEO_DEU_215' in rows_threshold_lower.columns:
-        rows_threshold_lower.drop(index=rows_threshold_lower.loc[
+    rows_threshold_lower.drop(index=rows_threshold_lower.loc[
                     rows_threshold_lower['CAMEO_DEU_2015'] == True].index, inplace=True, axis=1)
-    else:
-        pass
+
 
     # Encode with  dummy variables call encoded_rows_with_dummies
     rows_threshold_lower = encoded_rows_with_dummies(rows_threshold_lower, multi)
@@ -261,10 +263,17 @@ if __name__ == '__main__':
 
     # Drop the mix data type rows  from  rows_threshold_lower
     rows_threshold_lower.drop(mixed_data_type_rows, inplace=True, axis=1)
+    rows_threshold_lower.reset_index(drop=True, inplace=True)
 
+    simple_imputer = SimpleImputer(missing_values=np.nan, strategy='constant', fill_value=0)
+    customer_data = pd.DataFrame(simple_imputer.fit_transform(rows_threshold_lower), columns=rows_threshold_lower.columns)
 
+    scaler = StandardScaler()
+    scaled_data = pd.DataFrame(scaler.fit_transform(customer_data), columns=customer_data.columns)
 
-
-    print(rows_threshold_lower.head())
+    pca = PCA(n_components=30)
+    # pca.fit(scaled_data)
+    principal_components = pca.transform(scaled_data)
+    print( principal_components)
 
     # print(find_columns_with_missing_data(azdias_demogrh_df))
