@@ -57,6 +57,14 @@ def find_columns_with_missing_data(df):
 
     return column_count_of_missing_df.sort_values(by='percentage', ascending=False)
 
+def format_rows_missing_data(df, df2):
+    multi_categorial_df = pd.DataFrame({
+        'Name': df,
+        'Count': df2[df].nunique()
+    })
+
+    return multi_categorial_df
+                                
 
 def find_row_with_missing_data(df):
     """
@@ -210,50 +218,58 @@ def check_null_types(df):
 
     return null_by_dtype
 
-
-if __name__ == '__main__':
-    semi = ';'
-
-    azdias_demogrh_df = pd.read_csv('Udacity_CUSTOMERS_Subset.csv', sep=semi, na_values=['NaN', '[]'] )
-
-    # Load in the feature summary file.
-    feat_info = pd.read_csv('AZDIAS_Feature_Summary.csv', sep=semi)
-
+def clean_data(feat_info, df):
     # summary_df =  replace_missing_data(feat_info, summary df)
-    summary_df  = replace_missing_data(feat_info, azdias_demogrh_df)
 
-    #Count the Columns create a panda dataframe containing, column, name, null count, percentages
-    column_count_of_missing_df = find_columns_with_missing_data(summary_df)
+    feature_summary_df = replace_missing_data(feat_info, df)
 
-    #Find columns over percent threshold and columns to drop from list, threshold is set at 20
-    columns_over_threshold_percent, columns_to_drop =  find_columns_to_drop_over_threshold(column_count_of_missing_df, 30)
+    # Count the Columns create a panda dataframe containing, column, name, null count, percentages
+    column_count_of_missing_df = find_columns_with_missing_data(feature_summary_df)
 
-    #Find The missing rows and split summary returning upper and lower threshold
-    rows_missing_from_summary = find_row_with_missing_data(summary_df)
-    rows_threshold_upper, rows_threshold_lower = split_dataset(summary_df, rows_missing_from_summary)
+    # Find columns over percent threshold and columns to drop from list, threshold is set at 20
+    # columns over threshold, not doing anything with it right now, only return columns to drop
+    columns_over_threshold_percent, columns_to_drop = find_columns_to_drop_over_threshold(column_count_of_missing_df, 30)
+
+    # Drop the columns from summary based off of columns_to_drop and reset index on summary
+    feature_summary_df.drop(columns=columns_to_drop, inplace=True, axis=1)
+    feature_summary_df.reset_index(drop=True, inplace=True)
+
+    # Find The missing rows and split summary returning upper and lower threshold
+    rows_missing_from_summary = find_row_with_missing_data(feature_summary_df)  # use for graphs only
+    rows_threshold_upper, rows_threshold_lower = split_dataset(feature_summary_df, rows_missing_from_summary, 30)
 
     # Find the rows that are missing in summary df
-    columns_missing_from_summary =  find_rows_with_null_data_in_summary(summary_df)
+    # columns_missing_from_summary =  find_rows_with_null_data_in_summary(summary_df)  #used for grpahs only
 
     #  Find the categories, return as tuple for processing
-    cat, binary, multi = find_categories(feat_info, summary_df)
+    cat, binary, multi = find_categories(feat_info, feature_summary_df)
 
-    #Lower threshold drop the rows where its CAMEO_DEU_215
-    rows_threshold_lower.drop(index=rows_threshold_lower.loc[
-                    rows_threshold_lower['CAMEO_DEU_2015'] == True].index, inplace=True, axis=1)
+    # missing rows placd in a nice format
+    multi_categorial_df = format_rows_missing_data(multi, feature_summary_df)
 
+    # separate out the multi level that has less than 3
+    multi_level_less_than_3 = multi_categorial_df[multi_categorial_df['Count'] < 3]
+
+    # We are going to drop these rows, contain a lot of missing data
+    multi_level_greater_than_3 = multi_categorial_df[multi_categorial_df['Count'] > 3]
+
+    # drop lower therehold thats missing large volumes
+    rows_threshold_lower.drop(multi_level_greater_than_3['Name'].tolist(), inplace=True, axis=1)
+    rows_threshold_lower.reset_index(drop=True, inplace=True)
+
+    # Lower threshold drop the rows where its CAMEO_DEU_215
+    # if 'CAMEO_DEU_2015' in rows_threshold_lower:
+    # rows_threshold_lower.drop(index=rows_threshold_lower.loc[
+    #             rows_threshold_lower['CAMEO_DEU_2015'] == True].index, inplace=True, axis=1)
 
     # Encode with  dummy variables call encoded_rows_with_dummies
-    rows_threshold_lower = encoded_rows_with_dummies(rows_threshold_lower, multi)
+    # rows_threshold_lower = encoded_rows_with_dummies(rows_threshold_lower, multi)
+    rows_threshold_lower = encoded_rows_with_dummies(rows_threshold_lower, multi_level_less_than_3['Name'])
+    rows_threshold_lower.reset_index(drop=True, inplace=True)
 
     # Feature Engineering on PRAEGENDE_JUGENDJAHRE creating Movement and Decade Columns
     rows_threshold_lower['MOVEMENT'] = rows_threshold_lower['PRAEGENDE_JUGENDJAHRE'].apply(search_music_styles)
-    rows_threshold_lower['DECADE'] =  rows_threshold_lower['PRAEGENDE_JUGENDJAHRE'].map(decade)
-
-
-    # Drop the columns from summary based off of columns_to_drop and reset index on summary
-    summary_df.drop(columns=columns_to_drop, inplace=True, axis=1)
-    summary_df.reset_index(drop=True, inplace=True)
+    rows_threshold_lower['DECADE'] = rows_threshold_lower['PRAEGENDE_JUGENDJAHRE'].map(decade)
 
     # FeatureEngineering on CAMEO_INTL_2015'
     rows_threshold_lower = create_feature_rows(rows_threshold_lower)
@@ -265,15 +281,84 @@ if __name__ == '__main__':
     rows_threshold_lower.drop(mixed_data_type_rows, inplace=True, axis=1)
     rows_threshold_lower.reset_index(drop=True, inplace=True)
 
-    simple_imputer = SimpleImputer(missing_values=np.nan, strategy='constant', fill_value=0)
-    customer_data = pd.DataFrame(simple_imputer.fit_transform(rows_threshold_lower), columns=rows_threshold_lower.columns)
+    return rows_threshold_lower
 
-    scaler = StandardScaler()
-    scaled_data = pd.DataFrame(scaler.fit_transform(customer_data), columns=customer_data.columns)
 
-    pca = PCA(n_components=30)
+if __name__ == '__main__':
+    semi = ';'
+
+    azdias_demogrh_df = pd.read_csv('Udacity_CUSTOMERS_Subset.csv', sep=semi, na_values=['NaN', '[]'] )
+
+    # Load in the feature summary file.
+    feat_info = pd.read_csv('AZDIAS_Feature_Summary.csv', sep=semi)
+
+    clean_data_df = clean_data(feat_info, azdias_demogrh_df)
+    print(clean_data_df.head())
+
+    # # summary_df =  replace_missing_data(feat_info, summary df)
+    # summary_df  = replace_missing_data(feat_info, azdias_demogrh_df)
+    #
+    # #Count the Columns create a panda dataframe containing, column, name, null count, percentages
+    # column_count_of_missing_df = find_columns_with_missing_data(summary_df)
+    #
+    # #Find columns over percent threshold and columns to drop from list, threshold is set at 20
+    # columns_over_threshold_percent, columns_to_drop =  find_columns_to_drop_over_threshold(column_count_of_missing_df, 30)
+    #
+    # #Find The missing rows and split summary returning upper and lower threshold
+    # rows_missing_from_summary = find_row_with_missing_data(summary_df)
+    # rows_threshold_upper, rows_threshold_lower = split_dataset(summary_df, rows_missing_from_summary)
+    #
+    # # Find the rows that are missing in summary df
+    # columns_missing_from_summary =  find_rows_with_null_data_in_summary(summary_df)
+    #
+    # #  Find the categories, return as tuple for processing
+    # cat, binary, multi = find_categories(feat_info, summary_df)
+    #
+    # #Lower threshold drop the rows where its CAMEO_DEU_215
+    # rows_threshold_lower.drop(index=rows_threshold_lower.loc[
+    #                 rows_threshold_lower['CAMEO_DEU_2015'] == True].index, inplace=True, axis=1)
+    #
+    #
+    # # Encode with  dummy variables call encoded_rows_with_dummies
+    # rows_threshold_lower = encoded_rows_with_dummies(rows_threshold_lower, multi)
+    #
+    # # Feature Engineering on PRAEGENDE_JUGENDJAHRE creating Movement and Decade Columns
+    # rows_threshold_lower['MOVEMENT'] = rows_threshold_lower['PRAEGENDE_JUGENDJAHRE'].apply(search_music_styles)
+    # rows_threshold_lower['DECADE'] =  rows_threshold_lower['PRAEGENDE_JUGENDJAHRE'].map(decade)
+    #
+    #
+    # # Drop the columns from summary based off of columns_to_drop and reset index on summary
+    # summary_df.drop(columns=columns_to_drop, inplace=True, axis=1)
+    # summary_df.reset_index(drop=True, inplace=True)
+    #
+    # # FeatureEngineering on CAMEO_INTL_2015'
+    # rows_threshold_lower = create_feature_rows(rows_threshold_lower)
+    #
+    # # Find the mix data type rows
+    # mixed_data_type_rows = find_mixed_data_type_rows(feat_info, rows_threshold_lower)
+    #
+    # # Drop the mix data type rows  from  rows_threshold_lower
+    # rows_threshold_lower.drop(mixed_data_type_rows, inplace=True, axis=1)
+    # rows_threshold_lower.reset_index(drop=True, inplace=True)
+    #
+    # simple_imputer = SimpleImputer(missing_values=np.nan, strategy='constant', fill_value=0)
+    # simple_imputer.fit_transform(rows_threshold_lower)
+    # customer_data = simple_imputer.transform(rows_threshold_lower)
+    #
+    # scaler = StandardScaler()
+    # scaler.fit_transform(customer_data)
+    # scaled_data = scaler.transform(customer_data)
+    #
+    # scaled_data = pd.DataFrame(scaled_data, columns=rows_threshold_lower.columns.tolist())
+    #
+    # pca = PCA(n_components=40)
     # pca.fit(scaled_data)
-    principal_components = pca.transform(scaled_data)
-    print( principal_components)
+    # principal_components = pca.transform(scaled_data)
+    #
+    # kmeans = KMeans(n_clusters=10, random_state=0)
+    # kmeans.fit(principal_components)
+    # customer_pred = kmeans.predict(principal_components)
+    #
+    # print(customer_pred)
 
     # print(find_columns_with_missing_data(azdias_demogrh_df))
