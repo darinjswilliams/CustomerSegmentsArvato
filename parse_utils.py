@@ -172,7 +172,12 @@ def find_mixed_data_type_rows(df, df_categorical_columns):
     mixed_data_type_rows = [n for n in mixed_data_type_rows if n in df_categorical_columns]
     return mixed_data_type_rows
 
+def sort_pca_by_weights(df, pca, ncomp=0):
+    df_feature_weights =pd.DataFrame(pca.components_, columns=df.columns.tolist()).iloc[ncomp]
+    df_feature_weights.sort_values(ascending=False, inplace=True)
+    return df_feature_weights
 
+    
 def first_pc_analysis(df, pca, ncomp=0):
     """
     Maps the weights of the first principal component to the corresponding feature names,
@@ -191,13 +196,14 @@ def first_pc_analysis(df, pca, ncomp=0):
     # Step 3: Map weights to corresponding feature names
     feature_weights = [(feature_map[ix], weight) for ix, weight in enumerate(first_pc_weights)]
 
-    # Step 4: Sort the feature weights by absolute value, in descending order
-    sorted_feature_weights = sorted(feature_weights, key=lambda x: abs(x[1]), reverse=True)
+    # Step 4: Convert sorted weights to a DataFrame for easier analysis
+    df_feature_weights = pd.DataFrame(feature_weights, columns=["Feature", "Weight"])
 
-    # Step 5: Convert sorted weights to a DataFrame for easier analysis
-    sorted_df = pd.DataFrame(sorted_feature_weights, columns=["Feature", "Weight"])
+    # Step 5: Sort the feature weights  value, in descending order
+    sorted_feature_weights = df_feature_weights.sort_values(by="Weight", ascending=False)
 
-    return sorted_df
+
+    return  sorted_feature_weights
 
 
 def check_null_types(df):
@@ -292,27 +298,27 @@ if __name__ == '__main__':
     # Load in the feature summary file.
     feat_info = pd.read_csv('AZDIAS_Feature_Summary.csv', sep=semi)
 
-    clean_data_df = clean_data(feat_info, azdias_demogrh_df)
-    print(clean_data_df.head())
+    # clean_data_df = clean_data(feat_info, azdias_demogrh_df)
+    # print(clean_data_df.head())
 
-    # # summary_df =  replace_missing_data(feat_info, summary df)
-    # summary_df  = replace_missing_data(feat_info, azdias_demogrh_df)
+    # summary_df =  replace_missing_data(feat_info, summary df)
+    summary_df  = replace_missing_data(feat_info, azdias_demogrh_df)
     #
     # #Count the Columns create a panda dataframe containing, column, name, null count, percentages
-    # column_count_of_missing_df = find_columns_with_missing_data(summary_df)
+    column_count_of_missing_df = find_columns_with_missing_data(summary_df)
     #
     # #Find columns over percent threshold and columns to drop from list, threshold is set at 20
-    # columns_over_threshold_percent, columns_to_drop =  find_columns_to_drop_over_threshold(column_count_of_missing_df, 30)
+    columns_over_threshold_percent, columns_to_drop =  find_columns_to_drop_over_threshold(column_count_of_missing_df, 30)
     #
     # #Find The missing rows and split summary returning upper and lower threshold
-    # rows_missing_from_summary = find_row_with_missing_data(summary_df)
-    # rows_threshold_upper, rows_threshold_lower = split_dataset(summary_df, rows_missing_from_summary)
+    rows_missing_from_summary = find_row_with_missing_data(summary_df)
+    rows_threshold_upper, rows_threshold_lower = split_dataset(summary_df, rows_missing_from_summary)
     #
     # # Find the rows that are missing in summary df
-    # columns_missing_from_summary =  find_rows_with_null_data_in_summary(summary_df)
+    columns_missing_from_summary =  find_rows_with_null_data_in_summary(summary_df)
     #
     # #  Find the categories, return as tuple for processing
-    # cat, binary, multi = find_categories(feat_info, summary_df)
+    cat, binary, multi = find_categories(feat_info, summary_df)
     #
     # #Lower threshold drop the rows where its CAMEO_DEU_215
     # rows_threshold_lower.drop(index=rows_threshold_lower.loc[
