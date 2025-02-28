@@ -1,7 +1,11 @@
 import pandas as pd
 import numpy as np
+import missingno as msno
+from scipy import stats
 from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
+
+
 from sklearn.cluster import KMeans
 from sklearn.impute import SimpleImputer
 
@@ -224,24 +228,57 @@ def check_null_types(df):
 
     return null_by_dtype
 
-def clean_data(feat_info, df):
+def find_upper_limit(df):
+    return df['percentage'].quantile(0.95)
+
+def remove_outliers(df):
+    #Cap outliers determine by upperlimit quantile
+    upper_limit = df['percentage'].quantile(0.95)
+    df['percentage'] = np.where(df['percentage'] > upper_limit, upper_limit, df['percentage'])
+
+    return df
+
+def find_no_outliers(df):
+    #find z score on percentage column, 
+    # the zscore methods helps identify outliers by calculating how many standard deviations a data point
+    # is from the mean. You can remove the outlieers or cap them to reduce theri impact on your analysis
+    z_scores = np.abs(stats.zscore(df['percentage']))
+    df_no_outliers = df[(z_scores < 3)]
+
+    return df_no_outliers
+
+def handle_missing_data(df):
+    msno.matrix(df)
+    msno.heatmap(df)
+
+def clean_data(df):
+    """
+    Perform feature trimming, re-encoding, and engineering for demographics
+    data
+
+    INPUT: Demographics DataFrame
+    OUTPUT: Trimmed and cleaned demographics DataFrame
+    """
+
+    # At the top of file we copy original Featuer Summary inot Summary Data
+    feat_info = summary_df.copy()
+
     # summary_df =  replace_missing_data(feat_info, summary df)
+    feature_summary_df  = replace_missing_data(feat_info, df)
 
-    feature_summary_df = replace_missing_data(feat_info, df)
-
-    # Count the Columns create a panda dataframe containing, column, name, null count, percentages
+    #Count the Columns create a panda dataframe containing, column, name, null count, percentages
     column_count_of_missing_df = find_columns_with_missing_data(feature_summary_df)
 
-    # Find columns over percent threshold and columns to drop from list, threshold is set at 20
+    #Find columns over percent threshold and columns to drop from list, threshold is set at 20
     # columns over threshold, not doing anything with it right now, only return columns to drop
-    columns_over_threshold_percent, columns_to_drop = find_columns_to_drop_over_threshold(column_count_of_missing_df, 30)
+    columns_over_threshold_percent, columns_to_drop =  find_columns_to_drop_over_threshold(column_count_of_missing_df, 30)
 
     # Drop the columns from summary based off of columns_to_drop and reset index on summary
     feature_summary_df.drop(columns=columns_to_drop, inplace=True, axis=1)
     feature_summary_df.reset_index(drop=True, inplace=True)
 
-    # Find The missing rows and split summary returning upper and lower threshold
-    rows_missing_from_summary = find_row_with_missing_data(feature_summary_df)  # use for graphs only
+    #Find The missing rows and split summary returning upper and lower threshold
+    rows_missing_from_summary = find_row_with_missing_data(feature_summary_df)      #use for graphs only
     rows_threshold_upper, rows_threshold_lower = split_dataset(feature_summary_df, rows_missing_from_summary, 30)
 
     # Find the rows that are missing in summary df
@@ -250,32 +287,28 @@ def clean_data(feat_info, df):
     #  Find the categories, return as tuple for processing
     cat, binary, multi = find_categories(feat_info, feature_summary_df)
 
-    # missing rows placd in a nice format
+    #missing rows placd in a nice format
     multi_categorial_df = format_rows_missing_data(multi, feature_summary_df)
 
-    # separate out the multi level that has less than 3
-    multi_level_less_than_3 = multi_categorial_df[multi_categorial_df['Count'] < 3]
+    #separate out the multi level that has less than 3
+    multi_level_less_than_3 =  multi_categorial_df[ multi_categorial_df['Count'] <3 ]
 
-    # We are going to drop these rows, contain a lot of missing data
-    multi_level_greater_than_3 = multi_categorial_df[multi_categorial_df['Count'] > 3]
+    #We are going to drop these rows, contain a lot of missing data
+    multi_level_greater_than_3 =  multi_categorial_df[ multi_categorial_df['Count'] >3 ]
 
-    # drop lower therehold thats missing large volumes
-    rows_threshold_lower.drop(multi_level_greater_than_3['Name'].tolist(), inplace=True, axis=1)
+    #drop lower therehold thats missing large volumes
+    rows_threshold_lower.drop(multi_level_greater_than_3['Name'].tolist(),  inplace=True, axis=1)
     rows_threshold_lower.reset_index(drop=True, inplace=True)
 
-    # Lower threshold drop the rows where its CAMEO_DEU_215
-    # if 'CAMEO_DEU_2015' in rows_threshold_lower:
-    # rows_threshold_lower.drop(index=rows_threshold_lower.loc[
-    #             rows_threshold_lower['CAMEO_DEU_2015'] == True].index, inplace=True, axis=1)
-
+    #Lower threshold drop the rows where its CAMEO_DEU_215
     # Encode with  dummy variables call encoded_rows_with_dummies
-    # rows_threshold_lower = encoded_rows_with_dummies(rows_threshold_lower, multi)
-    rows_threshold_lower = encoded_rows_with_dummies(rows_threshold_lower, multi_level_less_than_3['Name'])
+    rows_threshold_lower = encoded_rows_with_dummies(rows_threshold_lower,  multi_level_less_than_3['Name'])
     rows_threshold_lower.reset_index(drop=True, inplace=True)
+
 
     # Feature Engineering on PRAEGENDE_JUGENDJAHRE creating Movement and Decade Columns
     rows_threshold_lower['MOVEMENT'] = rows_threshold_lower['PRAEGENDE_JUGENDJAHRE'].apply(search_music_styles)
-    rows_threshold_lower['DECADE'] = rows_threshold_lower['PRAEGENDE_JUGENDJAHRE'].map(decade)
+    rows_threshold_lower['DECADE'] =  rows_threshold_lower['PRAEGENDE_JUGENDJAHRE'].map(DECADE)
 
     # FeatureEngineering on CAMEO_INTL_2015'
     rows_threshold_lower = create_feature_rows(rows_threshold_lower)
@@ -287,7 +320,8 @@ def clean_data(feat_info, df):
     rows_threshold_lower.drop(mixed_data_type_rows, inplace=True, axis=1)
     rows_threshold_lower.reset_index(drop=True, inplace=True)
 
-    return rows_threshold_lower
+    #Process Rows that are null and set threshld, return only number, which will eliminate object  data types that missing data
+    return rows_threshold_lower.select_dtypes(include='number')
 
 
 if __name__ == '__main__':
@@ -298,27 +332,30 @@ if __name__ == '__main__':
     # Load in the feature summary file.
     feat_info = pd.read_csv('AZDIAS_Feature_Summary.csv', sep=semi)
 
+    #Visualize missing data
+    handle_missing_data(azdias_demogrh_df)
+
     # clean_data_df = clean_data(feat_info, azdias_demogrh_df)
     # print(clean_data_df.head())
 
     # summary_df =  replace_missing_data(feat_info, summary df)
-    summary_df  = replace_missing_data(feat_info, azdias_demogrh_df)
-    #
-    # #Count the Columns create a panda dataframe containing, column, name, null count, percentages
-    column_count_of_missing_df = find_columns_with_missing_data(summary_df)
-    #
-    # #Find columns over percent threshold and columns to drop from list, threshold is set at 20
-    columns_over_threshold_percent, columns_to_drop =  find_columns_to_drop_over_threshold(column_count_of_missing_df, 30)
-    #
-    # #Find The missing rows and split summary returning upper and lower threshold
-    rows_missing_from_summary = find_row_with_missing_data(summary_df)
-    rows_threshold_upper, rows_threshold_lower = split_dataset(summary_df, rows_missing_from_summary)
-    #
-    # # Find the rows that are missing in summary df
-    columns_missing_from_summary =  find_rows_with_null_data_in_summary(summary_df)
-    #
-    # #  Find the categories, return as tuple for processing
-    cat, binary, multi = find_categories(feat_info, summary_df)
+    # summary_df  = replace_missing_data(feat_info, azdias_demogrh_df)
+    # #
+    # # #Count the Columns create a panda dataframe containing, column, name, null count, percentages
+    # column_count_of_missing_df = find_columns_with_missing_data(summary_df)
+    # #
+    # # #Find columns over percent threshold and columns to drop from list, threshold is set at 20
+    # columns_over_threshold_percent, columns_to_drop =  find_columns_to_drop_over_threshold(column_count_of_missing_df, 30)
+    # #
+    # # #Find The missing rows and split summary returning upper and lower threshold
+    # rows_missing_from_summary = find_row_with_missing_data(summary_df)
+    # rows_threshold_upper, rows_threshold_lower = split_dataset(summary_df, rows_missing_from_summary)
+    # #
+    # # # Find the rows that are missing in summary df
+    # columns_missing_from_summary =  find_rows_with_null_data_in_summary(summary_df)
+    # #
+    # # #  Find the categories, return as tuple for processing
+    # cat, binary, multi = find_categories(feat_info, summary_df)
     #
     # #Lower threshold drop the rows where its CAMEO_DEU_215
     # rows_threshold_lower.drop(index=rows_threshold_lower.loc[
