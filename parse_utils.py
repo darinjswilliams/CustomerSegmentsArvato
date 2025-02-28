@@ -251,7 +251,7 @@ def handle_missing_data(df):
     msno.matrix(df)
     msno.heatmap(df)
 
-def clean_data(df):
+def clean_data(df, summary_df):
     """
     Perform feature trimming, re-encoding, and engineering for demographics
     data
@@ -308,7 +308,7 @@ def clean_data(df):
 
     # Feature Engineering on PRAEGENDE_JUGENDJAHRE creating Movement and Decade Columns
     rows_threshold_lower['MOVEMENT'] = rows_threshold_lower['PRAEGENDE_JUGENDJAHRE'].apply(search_music_styles)
-    rows_threshold_lower['DECADE'] =  rows_threshold_lower['PRAEGENDE_JUGENDJAHRE'].map(DECADE)
+    rows_threshold_lower['DECADE'] =  rows_threshold_lower['PRAEGENDE_JUGENDJAHRE'].map(decade)
 
     # FeatureEngineering on CAMEO_INTL_2015'
     rows_threshold_lower = create_feature_rows(rows_threshold_lower)
